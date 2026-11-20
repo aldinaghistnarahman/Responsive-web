@@ -4,6 +4,10 @@
 @section('content')
     <h2 style="text-align: center; margin-bottom: 2rem; color: #1f2937;">Selamat Datang</h2>
 
+    @if (session('success'))
+        <div class="success-message" role="status">{{ session('success') }}</div>
+    @endif
+
     <form method="POST" action="{{ route('login') }}">
         @csrf
         

@@ -81,6 +81,18 @@
             animation: fadeIn 0.3s ease;
         }
 
+        .success-message {
+            color: #087f5b;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin: -1rem 0 1.5rem;
+            padding: 0.8rem 1rem;
+            border: 1px solid #a7e4c8;
+            border-radius: 0.65rem;
+            background: linear-gradient(120deg, #edfff6, #eafaff);
+            animation: slideUpFade 0.4s ease both;
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }

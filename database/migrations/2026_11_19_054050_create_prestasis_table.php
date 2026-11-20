@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('prestasis', function (Blueprint $table) {
             $table->id();
-            $table->foreignID('mahasiswa_id')
+            $table->foreignID('mahasiswa_id')->nullable()
             ->constrained('mahasiswas')
             ->cascadeonDelete();
             $table->string('judul');

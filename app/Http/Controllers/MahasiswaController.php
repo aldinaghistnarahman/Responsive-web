@@ -2,75 +2,119 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\mahasiswa;
+use App\Models\Mahasiswa;
+use App\Models\Prestasi;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class MahasiswaController extends Controller
 {
-    // 1. Tampilkan Halaman Utama
-    public function index()
+    public function index(Request $request)
     {
-        $mahasiswa = mahasiswa::with('prestasis')
+        $filters = $request->validate([
+            'prestasi' => ['nullable', 'string', 'max:255'],
+        ]);
+        $prestasi = $filters['prestasi'] ?? '';
+        $hasExactPrestasi = $prestasi !== ''
+            && Prestasi::where('nama_prestasi', $prestasi)->exists();
+
+        $mahasiswa = Mahasiswa::query()
+            ->with('prestasis')
+            ->when($prestasi !== '', function ($query) use ($prestasi, $hasExactPrestasi) {
+                $query->whereHas('prestasis', function ($prestasiQuery) use ($prestasi, $hasExactPrestasi) {
+                    if ($hasExactPrestasi) {
+                        $prestasiQuery->where('nama_prestasi', $prestasi);
+                    } else {
+                        $prestasiQuery->where('nama_prestasi', 'like', '%'.$prestasi.'%');
+                    }
+                });
+            })
             ->orderBy('nama')
-            ->get(); 
-        return view('mahasiswa.index', compact('mahasiswa'));
+            ->paginate(5)
+            ->withQueryString();
+
+        return view('app', [
+            'page' => [
+                'name' => 'mahasiswa.index',
+                'success' => session('success'),
+                'filter' => $prestasi,
+                'prestasiOptions' => Prestasi::query()->orderBy('nama_prestasi')->pluck('nama_prestasi')->unique()->values(),
+                'mahasiswa' => $mahasiswa->getCollection()->map(fn (Mahasiswa $mhs) => [
+                    'id' => $mhs->id,
+                    'nama' => $mhs->nama,
+                    'nim' => $mhs->nim,
+                    'email' => $mhs->email,
+                    'prestasis' => $mhs->prestasis->pluck('nama_prestasi'),
+                ])->values(),
+                'pagination' => $this->pagination($mahasiswa),
+                'old' => old(),
+                'errors' => session('errors')?->getBag('default')->messages() ?? [],
+                'csrfToken' => csrf_token(),
+            ],
+        ]);
     }
 
-    // 2. Simpan Data Tambah Baru (Sudah Diperbaiki)
     public function store(Request $request)
     {
-
         $data = $request->validate([
-            // WAJIB MENAMBAHKAN VALIDASI NIM DI SINI
-            'nim' => 'required|numeric|unique:mahasiswas,nim',
-            'nama' => 'required|string|max:255',
-            'email' => 'required|email|unique:mahasiswas,email',
-        ], [
-            'nim.required' => 'NIM wajib diisi!',
-            'nim.numeric' => 'NIM harus berupa angka!',
-            'nim.unique' => 'NIM ini sudah terdaftar!',
-            'email.email' => 'Format email tidak valid (harus mengandung @ dan domain)!',
-            'email.unique' => 'Email ini sudah terdaftar, silakan gunakan email lain!',
-        ]);
-        mahasiswa::create($data);
-
-        return redirect('/mahasiswa')->with('success', 'Data mahasiswa berhasil ditambahkan!');
-    }
-
-    // 3. Buka Halaman Edit
-    public function edit($id)
-    {
-        $mhs = mahasiswa::findOrFail($id);
-        return view('mahasiswa.edit', compact('mhs'));
-    }
-
-    // 4. Simpan Perubahan Edit (Sudah Diperbaiki)
-    public function update(Request $request, $id)
-    {
-        $data = $request->validate([
-            // WAJIB MENAMBAHKAN VALIDASI NIM DI SINI JUGA
-            'nim' => 'required|numeric|unique:mahasiswas,nim,' . $id,
-            'nama' => 'required|string|max:255',
-            'email' => 'required|email|unique:mahasiswas,email,' . $id,
-        ], [
-            'nim.numeric' => 'NIM harus berupa angka!',
-            'nim.unique' => 'NIM ini sudah digunakan!',
-            'email.email' => 'Format email tidak valid (harus mengandung @ dan domain)!',
-            'email.unique' => 'Email ini sudah terdaftar, silakan gunakan email lain!',
+            'nim' => ['required', 'numeric', 'unique:mahasiswas,nim'],
+            'nama' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:mahasiswas,email'],
         ]);
 
-        $mhs = mahasiswa::findOrFail($id);
-        $mhs->update($data);
+        Mahasiswa::create($data);
 
-        return redirect('/mahasiswa')->with('success', 'Data mahasiswa berhasil diperbarui!');
+        return redirect()->route('mahasiswa.index')->with('success', 'Data mahasiswa berhasil ditambahkan.');
     }
 
-    // 5. Hapus Data dari Database
-    public function destroy($id)
+    public function edit(Mahasiswa $mahasiswa)
     {
-        $mhs = mahasiswa::findOrFail($id);
-        $mhs->delete();
+        return view('app', [
+            'page' => [
+                'name' => 'mahasiswa.edit',
+                'mahasiswa' => [
+                    'id' => $mahasiswa->id,
+                    'nama' => $mahasiswa->nama,
+                    'nim' => $mahasiswa->nim,
+                    'email' => $mahasiswa->email,
+                ],
+                'old' => old(),
+                'errors' => session('errors')?->getBag('default')->messages() ?? [],
+                'csrfToken' => csrf_token(),
+            ],
+        ]);
+    }
 
-        return redirect('/mahasiswa')->with('success', 'Data mahasiswa berhasil dihapus!');
+    public function update(Request $request, Mahasiswa $mahasiswa)
+    {
+        $data = $request->validate([
+            'nim' => ['required', 'numeric', Rule::unique('mahasiswas', 'nim')->ignore($mahasiswa->id)],
+            'nama' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('mahasiswas', 'email')->ignore($mahasiswa->id)],
+        ]);
+
+        $mahasiswa->update($data);
+
+        return redirect()->route('mahasiswa.index')->with('success', 'Data mahasiswa berhasil diperbarui.');
+    }
+
+    public function destroy(Mahasiswa $mahasiswa)
+    {
+        $mahasiswa->delete();
+
+        return redirect()->route('mahasiswa.index')->with('success', 'Data mahasiswa berhasil dihapus.');
+    }
+
+    private function pagination($paginator): array
+    {
+        return [
+            'currentPage' => $paginator->currentPage(),
+            'lastPage' => $paginator->lastPage(),
+            'previousPageUrl' => $paginator->previousPageUrl(),
+            'nextPageUrl' => $paginator->nextPageUrl(),
+            'from' => $paginator->firstItem(),
+            'to' => $paginator->lastItem(),
+            'total' => $paginator->total(),
+        ];
     }
 }
